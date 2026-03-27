@@ -1,0 +1,262 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CLIENT
+}
+
+enum SaleStatus {
+  DRAFT
+  PENDING_CONFIRMATION
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum ConfirmationLinkStatus {
+  ACTIVE
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum ProfileChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum InboxItemType {
+  PROFILE_CHANGE_PENDING
+  SALE_CONFIRMATION_PENDING
+  TRACKING_ERROR
+  FOLLOW_UP_DUE
+}
+
+enum InboxItemStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+  leads Lead[]
+  sales Sale[]
+  settings ClientSettings?
+  inboxItems InboxItem[]
+}
+
+model ClientSettings {
+  id                     String   @id @default(cuid())
+  leadCaptureKey         String   @unique
+  pixelId                String?
+  metaAccessToken        String?
+  metaTestEventCode      String?
+  purchaseTrackingEnabled Boolean @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  authUserId   String?  @unique
+  email        String   @unique
+  passwordHash String?
+  fullName     String
+  role         UserRole @default(CLIENT)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  assignedLeads Lead[]              @relation("AssignedLeadOwner")
+  statusChanges LeadStatusHistory[]
+  createdSales  Sale[]              @relation("SaleCreatedBy")
+  profileChangeRequests ProfileChangeRequest[] @relation("ProfileChangeRequester")
+  reviewedProfileChangeRequests ProfileChangeRequest[] @relation("ProfileChangeReviewer")
+}
+
+model ProfileChangeRequest {
+  id               String                     @id @default(cuid())
+  status           ProfileChangeRequestStatus @default(PENDING)
+  currentFullName  String
+  currentEmail     String
+  requestedFullName String
+  requestedEmail   String
+  rejectionReason  String?
+  createdAt        DateTime                   @default(now())
+  reviewedAt       DateTime?
+
+  requesterId String
+  reviewerId  String?
+
+  requester User  @relation("ProfileChangeRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  reviewer  User? @relation("ProfileChangeReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  inboxItems InboxItem[]
+
+  @@index([requesterId, status, createdAt])
+}
+
+model Lead {
+  id              String    @id @default(cuid())
+  name            String
+  phone           String
+  document        String?
+  documentType    String?
+  state           String?
+  status          String    @default("CREATED")
+  notes           String?
+  nextContactAt   DateTime?
+  conversionValue Decimal?  @db.Decimal(10, 2)
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  utmContent      String?
+  utmTerm         String?
+  fbclid          String?
+  addressLine     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  clientId     String
+  assignedToId String?
+
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assignedTo User?    @relation("AssignedLeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  history    LeadStatusHistory[]
+  sales      Sale[]
+  inboxItems InboxItem[]
+
+  @@index([clientId, createdAt])
+  @@index([clientId, status])
+}
+
+model LeadStatusHistory {
+  id             String   @id @default(cuid())
+  previousStatus String?
+  nextStatus     String
+  channel        String?
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  leadId      String
+  changedById String?
+
+  lead      Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  changedBy User? @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt])
+}
+
+model Sale {
+  id           String     @id @default(cuid())
+  totalValue   Decimal    @db.Decimal(10, 2)
+  currency     String     @default("BRL")
+  status       SaleStatus @default(PENDING_CONFIRMATION)
+  buyerName    String
+  buyerPhone   String
+  buyerAddress String?
+  metaEventId  String?    @unique
+  confirmedAt  DateTime?
+  trackingStatus String?
+  trackingSentAt DateTime?
+  trackingError String?
+  trackingResponse Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  clientId    String
+  leadId      String
+  createdById String?
+
+  client       Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  lead         Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy    User?                  @relation("SaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items        SaleItem[]
+  confirmation SaleConfirmationLink?
+  inboxItems   InboxItem[]
+
+  @@index([clientId, createdAt])
+  @@index([leadId])
+}
+
+model SaleItem {
+  id          String   @id @default(cuid())
+  description String
+  createdAt   DateTime @default(now())
+
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+}
+
+model SaleConfirmationLink {
+  id        String                 @id @default(cuid())
+  token     String                 @unique
+  status    ConfirmationLinkStatus @default(ACTIVE)
+  expiresAt DateTime?
+  usedAt    DateTime?
+  lastIp    String?
+  userAgent String?
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  saleId String @unique
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+}
+
+model InboxItem {
+  id        String          @id @default(cuid())
+  type      InboxItemType
+  audience  UserRole
+  status    InboxItemStatus @default(OPEN)
+  title     String
+  description String?
+  visibleFrom DateTime?
+  dueAt     DateTime?
+  viewedAt  DateTime?
+  resolvedAt DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  clientId               String?
+  leadId                 String?
+  saleId                 String?
+  profileChangeRequestId String?
+
+  client               Client?               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  lead                 Lead?                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sale                 Sale?                 @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  profileChangeRequest ProfileChangeRequest? @relation(fields: [profileChangeRequestId], references: [id], onDelete: Cascade)
+
+  @@index([audience, status, createdAt])
+  @@index([clientId, audience, status, createdAt])
+  @@index([type, status, createdAt])
+}

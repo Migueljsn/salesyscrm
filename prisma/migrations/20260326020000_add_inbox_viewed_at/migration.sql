@@ -1,0 +1,2 @@
+ALTER TABLE "InboxItem"
+ADD COLUMN "viewedAt" TIMESTAMP(3);

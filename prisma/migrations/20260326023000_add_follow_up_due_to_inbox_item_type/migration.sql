@@ -1,0 +1,1 @@
+ALTER TYPE "InboxItemType" ADD VALUE 'FOLLOW_UP_DUE';

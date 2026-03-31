@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
@@ -10,6 +11,8 @@ import { requireUser } from "@/lib/auth";
 import { detectDocumentType, getDocumentDigits } from "@/lib/document";
 import { findDuplicateLeadByContact } from "@/lib/leads";
 import { createOrUpdateOpenInboxItem, resolveInboxItems } from "@/lib/inbox";
+import { getRequestOrigin } from "@/lib/url";
+import { sendMetaQualifiedLeadEvent } from "@/lib/meta";
 
 const baseLeadSchema = z.object({
   clientId: z.string().optional(),
@@ -40,6 +43,10 @@ const statusUpdateSchema = z.object({
 const deleteLeadSchema = z.object({
   leadId: z.string().min(1),
   confirmationText: z.string().trim(),
+});
+
+const qualifyLeadSchema = z.object({
+  leadId: z.string().min(1),
 });
 
 export type LeadActionState = {
@@ -281,6 +288,123 @@ export async function updateLeadNotesAction(
 
   revalidatePath(`/app/leads/${lead.id}`);
   revalidatePath("/app/leads");
+
+  return {};
+}
+
+export async function qualifyLeadAction(
+  _prevState: LeadActionState,
+  formData: FormData,
+): Promise<LeadActionState> {
+  const user = await requireUser();
+  const parsed = qualifyLeadSchema.safeParse({
+    leadId: formData.get("leadId"),
+  });
+
+  if (!parsed.success) {
+    return { error: "Lead invalida." };
+  }
+
+  const lead = await prisma.lead.findFirst({
+    where: {
+      id: parsed.data.leadId,
+      ...(user.role === "ADMIN" ? {} : { clientId: user.clientId ?? "__none__" }),
+    },
+  });
+
+  if (!lead) {
+    return { error: "Lead nao encontrada." };
+  }
+
+  if (lead.isQualified) {
+    return { error: "Esta lead ja foi marcada como qualificada." };
+  }
+
+  const qualifiedMetaEventId = crypto.randomUUID();
+
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      isQualified: true,
+      qualifiedAt: new Date(),
+      qualifiedById: user.id,
+      qualifiedMetaEventId,
+      history: {
+        create: {
+          previousStatus: lead.status,
+          nextStatus: lead.status,
+          notes: "Lead marcada como qualificada.",
+          changedById: user.id,
+        },
+      },
+    },
+  });
+
+  const origin = await getRequestOrigin();
+  const clientSettings = await prisma.clientSettings.findUnique({
+    where: { clientId: lead.clientId },
+  });
+
+  if (clientSettings) {
+    try {
+      const trackingResult = await sendMetaQualifiedLeadEvent({
+        lead: {
+          ...lead,
+          isQualified: true,
+          qualifiedAt: new Date(),
+          qualifiedById: user.id,
+          qualifiedMetaEventId,
+          qualifiedTrackingStatus: null,
+          qualifiedTrackingSentAt: null,
+          qualifiedTrackingError: null,
+          qualifiedTrackingResponse: null,
+        },
+        settings: clientSettings,
+        eventSourceUrl: `${origin}/app/leads/${lead.id}`,
+        eventId: qualifiedMetaEventId,
+      });
+
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          qualifiedTrackingStatus: trackingResult.ok
+            ? "SENT"
+            : trackingResult.skipped
+              ? "SKIPPED"
+              : "FAILED",
+          qualifiedTrackingSentAt: trackingResult.ok ? new Date() : null,
+          qualifiedTrackingError: trackingResult.ok ? null : trackingResult.error,
+          qualifiedTrackingResponse:
+            "responseBody" in trackingResult
+              ? ((trackingResult.responseBody ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull)
+              : Prisma.JsonNull,
+        },
+      });
+    } catch (error) {
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          qualifiedTrackingStatus: "FAILED",
+          qualifiedTrackingError:
+            error instanceof Error
+              ? error.message
+              : "Falha ao enviar QualifiedLead.",
+        },
+      });
+    }
+  } else {
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        qualifiedTrackingStatus: "SKIPPED",
+        qualifiedTrackingError: "Cliente sem configuracao de tracking.",
+      },
+    });
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/app/leads");
+  revalidatePath(`/app/leads/${lead.id}`);
 
   return {};
 }

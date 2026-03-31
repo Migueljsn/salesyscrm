@@ -109,7 +109,6 @@ export async function listScopedLeads(search?: string, status?: string) {
         orderBy: {
           createdAt: "desc",
         },
-        take: 1,
       },
     },
     orderBy: {
@@ -129,6 +128,7 @@ export async function getScopedLeadById(leadId: string) {
     include: {
       client: true,
       assignedTo: true,
+      qualifiedBy: true,
       history: {
         include: {
           changedBy: true,
@@ -140,7 +140,6 @@ export async function getScopedLeadById(leadId: string) {
       sales: {
         include: {
           items: true,
-          confirmation: true,
         },
         orderBy: {
           createdAt: "desc",
@@ -148,4 +147,80 @@ export async function getScopedLeadById(leadId: string) {
       },
     },
   });
+}
+
+export type CustomerSalesSummary = {
+  confirmedSalesCount: number;
+  totalConfirmedValue: string;
+  lastConfirmedSaleAt: Date | null;
+};
+
+export async function getCustomerSalesSummaryForLead(input: {
+  clientId: string;
+  phone?: string | null;
+  document?: string | null;
+}) {
+  const phoneDigits = getPhoneDigits(input.phone);
+  const documentDigits = getDocumentDigits(input.document);
+
+  if (!phoneDigits && !documentDigits) {
+    return null;
+  }
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      clientId: input.clientId,
+    },
+    select: {
+      id: true,
+      phone: true,
+      document: true,
+      sales: {
+        where: {
+          status: "CONFIRMED",
+        },
+        select: {
+          totalValue: true,
+          confirmedAt: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+
+  const matchingSales = leads
+    .filter((lead) => {
+      const samePhone =
+        phoneDigits && getPhoneDigits(lead.phone) === phoneDigits;
+      const sameDocument =
+        documentDigits &&
+        getDocumentDigits(lead.document) === documentDigits;
+
+      return Boolean(samePhone || sameDocument);
+    })
+    .flatMap((lead) => lead.sales);
+
+  if (matchingSales.length === 0) {
+    return null;
+  }
+
+  const totalConfirmedValue = matchingSales
+    .reduce((sum, sale) => sum + Number(sale.totalValue.toString()), 0)
+    .toFixed(2);
+
+  const lastConfirmedSaleAt = matchingSales.reduce<Date | null>((latest, sale) => {
+    const candidate = sale.confirmedAt ?? sale.createdAt;
+
+    if (!latest || candidate > latest) {
+      return candidate;
+    }
+
+    return latest;
+  }, null);
+
+  return {
+    confirmedSalesCount: matchingSales.length,
+    totalConfirmedValue,
+    lastConfirmedSaleAt,
+  } satisfies CustomerSalesSummary;
 }

@@ -26,13 +26,6 @@ enum SaleStatus {
   EXPIRED
 }
 
-enum ConfirmationLinkStatus {
-  ACTIVE
-  CONFIRMED
-  CANCELLED
-  EXPIRED
-}
-
 enum ProfileChangeRequestStatus {
   PENDING
   APPROVED
@@ -41,7 +34,6 @@ enum ProfileChangeRequestStatus {
 
 enum InboxItemType {
   PROFILE_CHANGE_PENDING
-  SALE_CONFIRMATION_PENDING
   TRACKING_ERROR
   FOLLOW_UP_DUE
 }
@@ -96,6 +88,7 @@ model User {
   client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   assignedLeads Lead[]              @relation("AssignedLeadOwner")
+  qualifiedLeads Lead[]             @relation("QualifiedLeadBy")
   statusChanges LeadStatusHistory[]
   createdSales  Sale[]              @relation("SaleCreatedBy")
   profileChangeRequests ProfileChangeRequest[] @relation("ProfileChangeRequester")
@@ -133,6 +126,13 @@ model Lead {
   status          String    @default("CREATED")
   notes           String?
   nextContactAt   DateTime?
+  isQualified     Boolean   @default(false)
+  qualifiedAt     DateTime?
+  qualifiedMetaEventId String? @unique
+  qualifiedTrackingStatus String?
+  qualifiedTrackingSentAt DateTime?
+  qualifiedTrackingError String?
+  qualifiedTrackingResponse Json?
   conversionValue Decimal?  @db.Decimal(10, 2)
   utmSource       String?
   utmMedium       String?
@@ -146,9 +146,11 @@ model Lead {
 
   clientId     String
   assignedToId String?
+  qualifiedById String?
 
   client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   assignedTo User?    @relation("AssignedLeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  qualifiedBy User?   @relation("QualifiedLeadBy", fields: [qualifiedById], references: [id], onDelete: SetNull)
   history    LeadStatusHistory[]
   sales      Sale[]
   inboxItems InboxItem[]
@@ -199,7 +201,6 @@ model Sale {
   lead         Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   createdBy    User?                  @relation("SaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   items        SaleItem[]
-  confirmation SaleConfirmationLink?
   inboxItems   InboxItem[]
 
   @@index([clientId, createdAt])
@@ -215,21 +216,6 @@ model SaleItem {
   sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@index([saleId])
-}
-
-model SaleConfirmationLink {
-  id        String                 @id @default(cuid())
-  token     String                 @unique
-  status    ConfirmationLinkStatus @default(ACTIVE)
-  expiresAt DateTime?
-  usedAt    DateTime?
-  lastIp    String?
-  userAgent String?
-  createdAt DateTime               @default(now())
-  updatedAt DateTime               @updatedAt
-
-  saleId String @unique
-  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
 }
 
 model InboxItem {

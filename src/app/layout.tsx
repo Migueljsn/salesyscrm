@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Fonil Sales System",
-  description: "CRM operacional de leads e confirmacao pos-venda.",
+  description: "CRM operacional de leads, qualificacao e vendas.",
 };
 
 export default function RootLayout({

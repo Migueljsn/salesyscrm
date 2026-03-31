@@ -2,14 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { SaleStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { createOrUpdateOpenInboxItem } from "@/lib/inbox";
+import { resolveInboxItems } from "@/lib/inbox";
+import { getCustomerSalesSummaryForLead } from "@/lib/leads";
 import { getRequestOrigin } from "@/lib/url";
 import { processSalePurchaseTracking } from "@/lib/purchase-tracking";
 import {
-  createConfirmationToken,
   createMetaEventId,
   parseCurrencyInput,
   parseSaleItems,
@@ -23,6 +24,7 @@ const createSaleSchema = z.object({
   buyerAddress: z.string().trim().optional(),
   totalValue: z.string().trim().min(1, "Informe o valor total."),
   items: z.string().trim().min(2, "Informe pelo menos um item."),
+  confirmRepeatSale: z.enum(["true", "false"]).default("false"),
 });
 
 const retrySaleTrackingSchema = z.object({
@@ -41,6 +43,7 @@ export async function createSaleAction(
     buyerAddress: formData.get("buyerAddress") || undefined,
     totalValue: formData.get("totalValue"),
     items: formData.get("items"),
+    confirmRepeatSale: formData.get("confirmRepeatSale") ?? "false",
   });
 
   if (!parsed.success) {
@@ -58,6 +61,12 @@ export async function createSaleAction(
     return { error: "Lead nao encontrada." };
   }
 
+  if (!lead.isQualified) {
+    return {
+      error: "A venda so pode ser registrada depois que a lead for qualificada.",
+    };
+  }
+
   const totalValue = parseCurrencyInput(parsed.data.totalValue);
 
   if (!totalValue) {
@@ -70,11 +79,32 @@ export async function createSaleAction(
     return { error: "Informe pelo menos um item." };
   }
 
+  const previousSalesSummary = await getCustomerSalesSummaryForLead({
+    clientId: lead.clientId,
+    phone: lead.phone,
+    document: lead.document,
+  });
+
+  if (
+    previousSalesSummary &&
+    previousSalesSummary.confirmedSalesCount > 0 &&
+    parsed.data.confirmRepeatSale !== "true"
+  ) {
+    return {
+      error:
+        "Este cliente ja possui vendas registradas. Confirme o cadastro para somar a recompra ao historico.",
+    };
+  }
+
+  const origin = await getRequestOrigin();
+
   const sale = await prisma.sale.create({
     data: {
       clientId: lead.clientId,
       leadId: lead.id,
       createdById: user.id,
+      status: SaleStatus.CONFIRMED,
+      confirmedAt: new Date(),
       totalValue,
       buyerName: parsed.data.buyerName,
       buyerPhone: parsed.data.buyerPhone,
@@ -85,26 +115,36 @@ export async function createSaleAction(
           description,
         })),
       },
-      confirmation: {
-        create: {
-          token: createConfirmationToken(),
-        },
-      },
-    },
-    include: {
-      confirmation: true,
     },
   });
 
-  await createOrUpdateOpenInboxItem({
-    type: "SALE_CONFIRMATION_PENDING",
-    audience: "CLIENT",
-    title: "Venda aguardando confirmacao",
-    description: `A lead ${lead.name} possui uma venda aguardando confirmacao do comprador.`,
-    clientId: lead.clientId,
+  if (lead.status !== "VENDA REALIZADA") {
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        status: "VENDA REALIZADA",
+        nextContactAt: null,
+        history: {
+          create: {
+            previousStatus: lead.status,
+            nextStatus: "VENDA REALIZADA",
+            notes: "Venda registrada e confirmada internamente pelo vendedor.",
+            changedById: user.id,
+          },
+        },
+      },
+    });
+  }
+
+  await resolveInboxItems({
+    type: "FOLLOW_UP_DUE",
     leadId: lead.id,
-    saleId: sale.id,
   });
+
+  await processSalePurchaseTracking({
+    saleId: sale.id,
+    eventSourceUrl: `${origin}/app/leads/${lead.id}`,
+  }).catch(() => undefined);
 
   revalidatePath("/app");
   revalidatePath("/app/leads");
@@ -140,11 +180,6 @@ export async function retrySaleTrackingAction(
     select: {
       id: true,
       leadId: true,
-      confirmation: {
-        select: {
-          token: true,
-        },
-      },
     },
   });
 
@@ -153,14 +188,12 @@ export async function retrySaleTrackingAction(
   }
 
   const origin = await getRequestOrigin();
-  const confirmationUrl = sale.confirmation?.token
-    ? `${origin}/confirm/${sale.confirmation.token}`
-    : `${origin}/app/leads/${sale.leadId}`;
+  const saleContextUrl = `${origin}/app/leads/${sale.leadId}`;
 
   try {
     const { trackingResult } = await processSalePurchaseTracking({
       saleId: sale.id,
-      eventSourceUrl: confirmationUrl,
+      eventSourceUrl: saleContextUrl,
     });
 
     revalidatePath("/app");

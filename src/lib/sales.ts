@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { ConfirmationLinkStatus, Prisma, SaleStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 
@@ -30,10 +30,6 @@ export function parseSaleItems(rawItems: string) {
     .filter(Boolean);
 }
 
-export function createConfirmationToken() {
-  return crypto.randomBytes(24).toString("base64url");
-}
-
 export function createMetaEventId() {
   return crypto.randomUUID();
 }
@@ -51,7 +47,6 @@ export async function getScopedLeadForSale(leadId: string) {
       sales: {
         include: {
           items: true,
-          confirmation: true,
         },
         orderBy: {
           createdAt: "desc",
@@ -59,41 +54,4 @@ export async function getScopedLeadForSale(leadId: string) {
       },
     },
   });
-}
-
-export async function getSaleConfirmationByToken(token: string) {
-  return prisma.saleConfirmationLink.findUnique({
-    where: { token },
-    include: {
-      sale: {
-        include: {
-          lead: true,
-          client: true,
-          items: true,
-          confirmation: true,
-        },
-      },
-    },
-  });
-}
-
-export function isConfirmationExpired(expiresAt?: Date | null) {
-  return Boolean(expiresAt && expiresAt.getTime() < Date.now());
-}
-
-export async function markLinkExpired(linkId: string, saleId: string) {
-  await prisma.$transaction([
-    prisma.saleConfirmationLink.update({
-      where: { id: linkId },
-      data: {
-        status: ConfirmationLinkStatus.EXPIRED,
-      },
-    }),
-    prisma.sale.update({
-      where: { id: saleId },
-      data: {
-        status: SaleStatus.EXPIRED,
-      },
-    }),
-  ]);
 }

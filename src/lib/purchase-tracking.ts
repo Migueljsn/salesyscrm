@@ -26,7 +26,6 @@ export async function processSalePurchaseTracking({
           settings: true,
         },
       },
-      confirmation: true,
     },
   });
 

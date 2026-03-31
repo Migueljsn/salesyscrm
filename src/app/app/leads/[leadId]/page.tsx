@@ -2,12 +2,17 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { StatusPill } from "@/components/status-pill";
-import { buildWhatsAppUrl, getLeadScope, getScopedLeadById } from "@/lib/leads";
+import {
+  buildWhatsAppUrl,
+  getCustomerSalesSummaryForLead,
+  getLeadScope,
+  getScopedLeadById,
+} from "@/lib/leads";
 import { formatCurrency, formatDateTime } from "@/lib/format";
-import { getRequestOrigin } from "@/lib/url";
 import { LeadStatusForm } from "../status-form";
 import { LeadNotesForm } from "../notes-form";
 import { DeleteLeadModal } from "../delete-lead-modal";
+import { QualifyLeadForm } from "../qualify-lead-form";
 import { SaleForm } from "./sale-form";
 import { RetrySaleTrackingForm } from "./retry-sale-tracking-form";
 
@@ -30,11 +35,16 @@ export default async function LeadDetailPage({
 }) {
   const [{ user }, { leadId }] = await Promise.all([getLeadScope(), params]);
   const lead = await getScopedLeadById(leadId);
-  const origin = await getRequestOrigin();
 
   if (!lead) {
     notFound();
   }
+
+  const customerSalesSummary = await getCustomerSalesSummaryForLead({
+    clientId: lead.clientId,
+    phone: lead.phone,
+    document: lead.document,
+  });
 
   const leadWhatsappUrl = buildWhatsAppUrl(lead.phone);
 
@@ -57,6 +67,10 @@ export default async function LeadDetailPage({
               <InfoCard label="UF" value={lead.state || "-"} />
               <StatusInfoCard label="Status atual" value={lead.status} />
               <InfoCard
+                label="Lead qualificada"
+                value={lead.isQualified ? "Sim" : "Nao"}
+              />
+              <InfoCard
                 label="Valor"
                 value={formatCurrency(
                   lead.sales[0]?.totalValue?.toString() ??
@@ -75,6 +89,14 @@ export default async function LeadDetailPage({
               <InfoCard
                 label="Proximo contato"
                 value={lead.nextContactAt ? formatDateTime(lead.nextContactAt) : "-"}
+              />
+              <InfoCard
+                label="Qualificada em"
+                value={lead.qualifiedAt ? formatDateTime(lead.qualifiedAt) : "-"}
+              />
+              <InfoCard
+                label="Qualificada por"
+                value={lead.qualifiedBy?.fullName || "-"}
               />
             </div>
 
@@ -155,20 +177,12 @@ export default async function LeadDetailPage({
               <div className="mt-4">
                 <EmptyState
                   title="Sem venda vinculada"
-                  description="Crie a primeira venda para gerar o link de confirmacao pos-venda."
+                  description="Registre a primeira venda para confirmar internamente e disparar o Purchase no backend."
                 />
               </div>
             ) : (
               <div className="mt-5 grid gap-4">
                 {lead.sales.map((sale) => {
-                  const confirmationUrl = `${origin}/confirm/${sale.confirmation?.token ?? ""}`;
-                  const saleWhatsappUrl = sale.confirmation?.token
-                    ? buildWhatsAppUrl(
-                        sale.buyerPhone,
-                        `${sale.buyerName}, confirme sua compra através deste link para dar baixa no sistema e iniciarmos o processo de entrega.\n\n${confirmationUrl}`,
-                      )
-                    : null;
-
                   return (
                   <div
                     key={sale.id}
@@ -190,36 +204,11 @@ export default async function LeadDetailPage({
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <InfoCard label="Comprador" value={sale.buyerName} />
                       <InfoCard label="Telefone" value={sale.buyerPhone} />
+                      <InfoCard label="Endereco" value={sale.buyerAddress || "-"} />
                       <InfoCard
-                        label="Link de confirmacao"
-                        value={confirmationUrl}
+                        label="Confirmada em"
+                        value={sale.confirmedAt ? formatDateTime(sale.confirmedAt) : "-"}
                       />
-                      <InfoCard
-                        label="Status do link"
-                        value={sale.confirmation?.status ?? "-"}
-                      />
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {sale.confirmation?.token ? (
-                        <a
-                          href={confirmationUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-2xl border border-stone-700 px-4 py-3 text-sm font-semibold text-stone-100 transition hover:border-stone-500 hover:bg-stone-800"
-                        >
-                          Abrir link de confirmacao
-                        </a>
-                      ) : null}
-                      {saleWhatsappUrl ? (
-                        <a
-                          href={saleWhatsappUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400/40 hover:bg-emerald-500/20"
-                        >
-                          Enviar via WhatsApp
-                        </a>
-                      ) : null}
                     </div>
                     <div className="mt-4 rounded-[1.25rem] border border-stone-800 bg-stone-900/50 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -296,17 +285,84 @@ export default async function LeadDetailPage({
         <aside className="grid gap-6">
           <section className="rounded-[2rem] border border-stone-800 bg-stone-900/55 p-5">
             <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
+              Qualificacao
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold">Lead Qualificada</h2>
+            <div className="mt-5 grid gap-3">
+              <div className="rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                  Estado atual
+                </p>
+                <div className="mt-3">
+                  <StatusPill
+                    status={lead.isQualified ? "LEAD QUALIFICADA" : "NAO QUALIFICADA"}
+                    compact
+                  />
+                </div>
+                <div className="mt-4 grid gap-2 text-sm text-stone-300">
+                  <p>
+                    Qualificada em:{" "}
+                    {lead.qualifiedAt ? formatDateTime(lead.qualifiedAt) : "-"}
+                  </p>
+                  <p>Responsavel: {lead.qualifiedBy?.fullName || "-"}</p>
+                  <p>
+                    Tracking: {lead.qualifiedTrackingStatus || "PENDENTE"}
+                  </p>
+                  <p>
+                    Enviado em:{" "}
+                    {lead.qualifiedTrackingSentAt
+                      ? formatDateTime(lead.qualifiedTrackingSentAt)
+                      : "-"}
+                  </p>
+                </div>
+              </div>
+
+              {lead.qualifiedTrackingError ? (
+                <div className="rounded-[1.25rem] border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                  <p className="font-semibold text-red-100">
+                    Falha no envio de QualifiedLead
+                  </p>
+                  <p className="mt-2 leading-6">{lead.qualifiedTrackingError}</p>
+                </div>
+              ) : null}
+
+              {lead.qualifiedTrackingResponse ? (
+                <details className="rounded-[1.25rem] border border-stone-800 bg-stone-950/60 p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-stone-200">
+                    Ver resposta do tracking
+                  </summary>
+                  <pre className="mt-3 overflow-x-auto text-xs leading-6 text-stone-400">
+                    {JSON.stringify(lead.qualifiedTrackingResponse, null, 2)}
+                  </pre>
+                </details>
+              ) : null}
+
+              {!lead.isQualified ? <QualifyLeadForm leadId={lead.id} /> : null}
+            </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-stone-800 bg-stone-900/55 p-5">
+            <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
               Venda
             </p>
-            <h2 className="mt-2 text-2xl font-semibold">Gerar link pos-venda</h2>
-            <div className="mt-5">
-              <SaleForm
-                leadId={lead.id}
-                defaultName={lead.name}
-                defaultPhone={lead.phone}
-                defaultAddress={lead.addressLine}
-              />
-            </div>
+            <h2 className="mt-2 text-2xl font-semibold">Registrar venda</h2>
+            {lead.isQualified ? (
+              <div className="mt-5">
+                <SaleForm
+                  leadId={lead.id}
+                  defaultName={lead.name}
+                  defaultPhone={lead.phone}
+                  defaultAddress={lead.addressLine}
+                  customerSalesSummary={customerSalesSummary}
+                />
+              </div>
+            ) : (
+              <div className="mt-5 rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4 text-sm leading-6 text-stone-300">
+                A venda so pode ser registrada depois que esta lead for marcada
+                como <strong className="text-stone-100">Lead Qualificada</strong>.
+                Use o card de qualificacao acima para liberar esta etapa.
+              </div>
+            )}
           </section>
 
           <section className="rounded-[2rem] border border-stone-800 bg-stone-900/55 p-5">

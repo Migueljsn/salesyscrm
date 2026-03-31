@@ -97,9 +97,14 @@ export default async function LeadsPage({
             ) : (
               leads.map((lead) => (
                 (() => {
+                  const totalSalesValue = lead.sales.reduce(
+                    (sum, sale) => sum + Number(sale.totalValue.toString()),
+                    0,
+                  );
                   const leadValue =
-                    lead.sales[0]?.totalValue?.toString() ??
-                    lead.conversionValue?.toString();
+                    lead.sales.length > 0
+                      ? totalSalesValue.toFixed(2)
+                      : lead.conversionValue?.toString();
                   const whatsappUrl = buildWhatsAppUrl(lead.phone);
 
                   return (
@@ -110,12 +115,15 @@ export default async function LeadsPage({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-medium text-stone-100">{lead.name}</p>
-                      <p className="text-sm text-stone-400">{lead.phone}</p>
+                      <p className="text-sm text-stone-400">
+                        {lead.document || "Documento nao informado"}
+                      </p>
                     </div>
                     <StatusPill status={lead.status} />
                   </div>
                   <div className="mt-4 grid gap-2 text-sm text-stone-300">
                     <p>Cliente: {lead.client.name}</p>
+                    <p>Qtd compras: {lead.sales.length}</p>
                     <p>Valor: {formatCurrency(leadValue)}</p>
                     <p>Criada em: {formatDateTime(lead.createdAt)}</p>
                   </div>
@@ -158,6 +166,7 @@ export default async function LeadsPage({
                     <HeaderCell>Lead</HeaderCell>
                     <HeaderCell>Status</HeaderCell>
                     <HeaderCell>Cliente</HeaderCell>
+                    <HeaderCell>Qtd compras</HeaderCell>
                     <HeaderCell>Valor</HeaderCell>
                     <HeaderCell>Criada em</HeaderCell>
                     <HeaderCell></HeaderCell>
@@ -167,7 +176,7 @@ export default async function LeadsPage({
                   {leads.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-4 py-10"
                       >
                         <EmptyState
@@ -179,9 +188,14 @@ export default async function LeadsPage({
                   ) : (
                     leads.map((lead) => (
                       (() => {
+                        const totalSalesValue = lead.sales.reduce(
+                          (sum, sale) => sum + Number(sale.totalValue.toString()),
+                          0,
+                        );
                         const leadValue =
-                          lead.sales[0]?.totalValue?.toString() ??
-                          lead.conversionValue?.toString();
+                          lead.sales.length > 0
+                            ? totalSalesValue.toFixed(2)
+                            : lead.conversionValue?.toString();
                         const whatsappUrl = buildWhatsAppUrl(lead.phone);
 
                         return (
@@ -191,13 +205,18 @@ export default async function LeadsPage({
                       >
                         <td className="px-4 py-4">
                           <p className="font-medium text-stone-100">{lead.name}</p>
-                          <p className="text-stone-400">{lead.phone}</p>
+                          <p className="text-stone-400">
+                            {lead.document || "Documento nao informado"}
+                          </p>
                         </td>
                         <td className="px-4 py-4">
                           <StatusPill status={lead.status} />
                         </td>
                         <td className="px-4 py-4 text-stone-300">
                           {lead.client.name}
+                        </td>
+                        <td className="px-4 py-4 text-stone-300">
+                          {lead.sales.length}
                         </td>
                         <td className="px-4 py-4 text-stone-300">
                           {formatCurrency(leadValue)}

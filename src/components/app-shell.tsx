@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { ReactNode } from "react";
 import { logoutAction } from "@/app/login/actions";
 import { InboxMenu } from "@/components/inbox-menu";
+import { AdminNavLinks, ClientNavLinks } from "@/components/nav-links";
 
 type AppShellProps = {
   title: string;
@@ -39,24 +39,8 @@ export function AppShell({
             </p>
           ) : null}
 
-          <nav className="mt-8 grid gap-2 text-sm">
-            <NavLink href="/app">Visão geral</NavLink>
-            {role === "CLIENT" ? <NavLink href="/app/leads">Leads</NavLink> : null}
-            <NavLink href={role === "ADMIN" ? "/admin/reports" : "/app/reports"}>
-              Relatorios
-            </NavLink>
-            <NavLink href="/app/profile">Meu perfil</NavLink>
-            {role === "CLIENT" ? (
-              <NavLink href="/app/settings">
-                Configuracoes
-              </NavLink>
-            ) : null}
-            {role === "ADMIN" ? (
-              <>
-                <NavLink href="/admin">Admin</NavLink>
-                <NavLink href="/admin/clients">Clientes</NavLink>
-              </>
-            ) : null}
+          <nav className="mt-8 grid gap-1 text-sm">
+            {role === "CLIENT" ? <ClientNavLinks /> : <AdminNavLinks />}
           </nav>
 
           <form action={logoutAction} className="mt-8">
@@ -92,16 +76,5 @@ export function AppShell({
         </section>
       </div>
     </main>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="rounded-2xl px-4 py-3 text-stone-200 transition hover:bg-stone-800 hover:text-white"
-    >
-      {children}
-    </Link>
   );
 }

@@ -4,8 +4,10 @@ import { MetricCard } from "@/components/metric-card";
 import { StatusPill } from "@/components/status-pill";
 import { requireUser } from "@/lib/auth";
 import { getReportData } from "@/lib/analytics";
+import { getCustomerLifecycleOverview } from "@/lib/customer-intelligence";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { leadStatuses } from "@/lib/lead-status";
+import Link from "next/link";
 
 export default async function ReportsPage({
   searchParams,
@@ -17,11 +19,15 @@ export default async function ReportsPage({
   const period = typeof params.period === "string" ? params.period : "30d";
   const status = typeof params.status === "string" ? params.status : undefined;
 
-  const report = await getReportData({
-    clientId: user.role === "CLIENT" ? user.clientId : undefined,
-    period,
-    status,
-  });
+  const clientId = user.role === "CLIENT" ? user.clientId : undefined;
+  const [report, lifecycleOverview] = await Promise.all([
+    getReportData({
+      clientId,
+      period,
+      status,
+    }),
+    getCustomerLifecycleOverview(clientId),
+  ]);
 
   return (
     <AppShell
@@ -157,6 +163,76 @@ export default async function ReportsPage({
                 </tbody>
               </table>
             </div>
+          </div>
+        </section>
+      </section>
+
+      <section className="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="rounded-[2rem] border border-stone-800 bg-stone-900/60 p-6">
+          <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
+            Segmentacao da base
+          </p>
+          <div className="mt-5 grid gap-3">
+            {[
+              { segment: "CAMPEAO", count: lifecycleOverview.breakdown.CAMPEAO },
+              { segment: "FIEL", count: lifecycleOverview.breakdown.FIEL },
+              { segment: "EM_RISCO", count: lifecycleOverview.breakdown.EM_RISCO },
+              { segment: "INATIVO", count: lifecycleOverview.breakdown.INATIVO },
+              {
+                segment: "NOVO_COMPRADOR",
+                count: lifecycleOverview.breakdown.NOVO_COMPRADOR,
+              },
+            ].map(({ segment, count }) => (
+              <div
+                key={segment}
+                className="rounded-[1.25rem] border border-stone-800 bg-stone-950/60 p-4"
+              >
+                <StatusPill status={segment} compact />
+                <p className="mt-3 text-2xl font-semibold">{count}</p>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <section className="rounded-[2rem] border border-stone-800 bg-stone-900/60 p-6">
+          <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
+            Recuperacao e reativacao
+          </p>
+          <div className="mt-5 grid gap-4">
+            {lifecycleOverview.actionableCustomers.length === 0 ? (
+              <EmptyState
+                title="Nenhum cliente exige acao agora"
+                description="Os clientes em risco e inativos aparecerao aqui automaticamente."
+              />
+            ) : (
+              lifecycleOverview.actionableCustomers.map((customer) => (
+                <article
+                  key={customer.customerKey}
+                  className="rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-stone-100">{customer.displayName}</p>
+                      <p className="text-sm text-stone-400">
+                        {customer.confirmedSalesCount} compra(s) • {formatCurrency(customer.totalConfirmedValue)}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <StatusPill status={customer.segment} compact />
+                      <Link
+                        href={`/app/leads/${customer.leadId}`}
+                        className="text-xs font-semibold text-amber-300 transition hover:text-amber-200"
+                      >
+                        Abrir lead
+                      </Link>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-stone-300">
+                    Ultima compra em {formatDateTime(customer.lastConfirmedSaleAt)} • há {customer.daysSinceLastPurchase} dia(s)
+                  </p>
+                </article>
+              ))
+            )}
           </div>
         </section>
       </section>

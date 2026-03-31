@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { Bell } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 
 type InboxSummaryItem = {
   id: string;
@@ -131,70 +133,84 @@ export function InboxMenu() {
         type="button"
         onClick={() => void handleToggle()}
         className="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-stone-700 bg-stone-950/70 text-stone-100 transition hover:border-stone-500 hover:bg-stone-800"
-        aria-label="Abrir notificacoes"
+        aria-label="Abrir notificações"
       >
-        <span className="flex flex-col gap-1">
-          <span className="h-0.5 w-5 rounded-full bg-current" />
-          <span className="h-0.5 w-5 rounded-full bg-current" />
-          <span className="h-0.5 w-5 rounded-full bg-current" />
-        </span>
-        {summary?.unseenCount ? (
-          <span className="absolute -right-1 -top-1 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-amber-300 px-1.5 text-xs font-bold text-stone-950">
-            {summary.unseenCount}
-          </span>
-        ) : null}
+        <Bell size={18} />
+        <AnimatePresence>
+          {summary?.unseenCount ? (
+            <motion.span
+              key="badge"
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.5, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+              className="absolute -right-1 -top-1 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-amber-300 px-1.5 text-xs font-bold text-stone-950"
+            >
+              {summary.unseenCount}
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
       </button>
 
-      {isOpen ? (
-        <div className="absolute right-0 top-14 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-[1.75rem] border border-stone-800 bg-stone-900/95 p-4 shadow-2xl shadow-black/40 backdrop-blur">
-          <div className="flex items-center justify-between gap-3 border-b border-stone-800 pb-3">
-            <div>
-              <p className="text-sm font-semibold text-stone-100">
-                {summary?.role === "ADMIN" ? "Notificacoes" : "Tarefas"}
-              </p>
-              <p className="text-xs text-stone-500">
-                {summary?.openCount ?? 0} item(ns) em aberto
-              </p>
-            </div>
-            <Link
-              href="/app/inbox"
-              onClick={() => setIsOpen(false)}
-              className="text-xs font-semibold text-amber-300 transition hover:text-amber-200"
-            >
-              Ver tudo
-            </Link>
-          </div>
-
-          <div className="mt-3 grid gap-3">
-            {summary?.items.length ? (
-              summary.items.map((item) => (
-                <Link
-                  key={item.id}
-                  href={getItemHref(summary.role, item)}
-                  onClick={() => {
-                    void markItemAsViewed(item.id);
-                    setIsOpen(false);
-                  }}
-                  className="rounded-[1.25rem] border border-stone-800 bg-stone-950/70 p-4 transition hover:border-stone-700 hover:bg-stone-900"
-                >
-                  <p className="text-sm font-semibold text-stone-100">{item.title}</p>
-                  <p className="mt-2 line-clamp-2 text-sm text-stone-400">
-                    {item.description || "Sem descricao adicional."}
-                  </p>
-                  <div className="mt-3 grid gap-1 text-xs text-stone-500">
-                    <p>{formatDate(item.createdAt)}</p>
-                    {item.dueAt ? <p>Vence em {formatDate(item.dueAt)}</p> : null}
-                  </div>
-                </Link>
-              ))
-            ) : (
-              <div className="rounded-[1.25rem] border border-stone-800 bg-stone-950/70 p-5 text-sm text-stone-400">
-                Nenhuma pendencia aberta.
+      <AnimatePresence>
+        {isOpen ? (
+          <motion.div
+            key="dropdown"
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute right-0 top-14 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-[1.75rem] border border-stone-800 bg-stone-900/95 p-4 shadow-2xl shadow-black/40 backdrop-blur"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-stone-800 pb-3">
+              <div>
+                <p className="text-sm font-semibold text-stone-100">
+                  {summary?.role === "ADMIN" ? "Notificações" : "Tarefas"}
+                </p>
+                <p className="text-xs text-stone-500">
+                  {summary?.openCount ?? 0} item(ns) em aberto
+                </p>
               </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+              <Link
+                href="/app/inbox"
+                onClick={() => setIsOpen(false)}
+                className="text-xs font-semibold text-amber-300 transition hover:text-amber-200"
+              >
+                Ver tudo
+              </Link>
+            </div>
+
+            <div className="mt-3 grid gap-3">
+              {summary?.items.length ? (
+                summary.items.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={getItemHref(summary.role, item)}
+                    onClick={() => {
+                      void markItemAsViewed(item.id);
+                      setIsOpen(false);
+                    }}
+                    className="rounded-[1.25rem] border border-stone-800 bg-stone-950/70 p-4 transition hover:border-stone-700 hover:bg-stone-900"
+                  >
+                    <p className="text-sm font-semibold text-stone-100">{item.title}</p>
+                    <p className="mt-2 line-clamp-2 text-sm text-stone-400">
+                      {item.description || "Sem descrição adicional."}
+                    </p>
+                    <div className="mt-3 grid gap-1 text-xs text-stone-500">
+                      <p>{formatDate(item.createdAt)}</p>
+                      {item.dueAt ? <p>Vence em {formatDate(item.dueAt)}</p> : null}
+                    </div>
+                  </Link>
+                ))
+              ) : (
+                <div className="rounded-[1.25rem] border border-stone-800 bg-stone-950/70 p-5 text-sm text-stone-400">
+                  Nenhuma pendência aberta.
+                </div>
+              )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

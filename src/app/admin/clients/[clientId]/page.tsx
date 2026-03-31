@@ -7,7 +7,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { StatusPill } from "@/components/status-pill";
 import { formatCurrency, formatDateTime } from "@/lib/format";
-import { buildWhatsAppUrl } from "@/lib/leads";
+import { buildWhatsAppUrl, getConfirmedSalesMetrics } from "@/lib/leads";
 import { CreateLeadModal } from "@/app/app/leads/create-lead-modal";
 import { DeleteLeadModal } from "@/app/app/leads/delete-lead-modal";
 import { EditClientAccountForm } from "../edit-client-account-form";
@@ -71,11 +71,13 @@ export default async function AdminClientPage({
       sales: {
         select: {
           totalValue: true,
+          status: true,
+          confirmedAt: true,
+          createdAt: true,
         },
         orderBy: {
           createdAt: "desc",
         },
-        take: 1,
       },
     },
     orderBy: {
@@ -156,9 +158,9 @@ export default async function AdminClientPage({
             />
           ) : (
             leads.map((lead) => {
+              const metrics = getConfirmedSalesMetrics(lead.sales);
               const leadValue =
-                lead.sales[0]?.totalValue?.toString() ??
-                lead.conversionValue?.toString();
+                metrics.totalConfirmedValue ?? lead.conversionValue?.toString();
               const whatsappUrl = buildWhatsAppUrl(lead.phone);
 
               return (
@@ -169,11 +171,14 @@ export default async function AdminClientPage({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-medium text-stone-100">{lead.name}</p>
-                      <p className="text-sm text-stone-400">{lead.phone}</p>
+                      <p className="text-sm text-stone-400">
+                        {lead.document || "Documento não informado"}
+                      </p>
                     </div>
                     <StatusPill status={lead.status} />
                   </div>
                   <div className="mt-4 grid gap-2 text-sm text-stone-300">
+                    <p>Qtd compras: {metrics.confirmedSalesCount}</p>
                     <p>Valor: {formatCurrency(leadValue)}</p>
                     <p>Criada em: {formatDateTime(lead.createdAt)}</p>
                   </div>
@@ -214,6 +219,7 @@ export default async function AdminClientPage({
                 <tr>
                   <th className="px-4 py-3 font-medium">Lead</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Qtd compras</th>
                   <th className="px-4 py-3 font-medium">Valor</th>
                   <th className="px-4 py-3 font-medium">Criada em</th>
                   <th className="px-4 py-3 font-medium"></th>
@@ -222,7 +228,7 @@ export default async function AdminClientPage({
               <tbody>
                 {leads.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10">
+                    <td colSpan={6} className="px-4 py-10">
                       <EmptyState
                         title="Nenhuma lead encontrada"
                         description="Ajuste os filtros ou crie uma lead manualmente neste cliente."
@@ -231,9 +237,9 @@ export default async function AdminClientPage({
                   </tr>
                 ) : (
                   leads.map((lead) => {
+                    const metrics = getConfirmedSalesMetrics(lead.sales);
                     const leadValue =
-                      lead.sales[0]?.totalValue?.toString() ??
-                      lead.conversionValue?.toString();
+                      metrics.totalConfirmedValue ?? lead.conversionValue?.toString();
                     const whatsappUrl = buildWhatsAppUrl(lead.phone);
 
                     return (
@@ -243,10 +249,15 @@ export default async function AdminClientPage({
                       >
                         <td className="px-4 py-4">
                           <p className="font-medium text-stone-100">{lead.name}</p>
-                          <p className="text-stone-400">{lead.phone}</p>
+                          <p className="text-stone-400">
+                            {lead.document || "Documento não informado"}
+                          </p>
                         </td>
                         <td className="px-4 py-4">
                           <StatusPill status={lead.status} />
+                        </td>
+                        <td className="px-4 py-4 text-stone-300">
+                          {metrics.confirmedSalesCount}
                         </td>
                         <td className="px-4 py-4 text-stone-300">
                           {formatCurrency(leadValue)}

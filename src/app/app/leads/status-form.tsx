@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useActionState } from "react";
+import { toast } from "sonner";
 import { leadStatuses } from "@/lib/lead-status";
 import { updateLeadStatusAction, type LeadActionState } from "./actions";
 
@@ -22,6 +23,11 @@ export function LeadStatusForm({
   );
   const [nextContactAt, setNextContactAt] = useState(currentNextContactAt ?? "");
 
+  useEffect(() => {
+    if (state.success) toast.success(state.success);
+    if (state.error) toast.error(state.error);
+  }, [state]);
+
   return (
     <form action={formAction} className="grid gap-4">
       <input type="hidden" name="leadId" value={leadId} />
@@ -41,7 +47,7 @@ export function LeadStatusForm({
       </label>
 
       <label className="grid gap-2">
-        <span className="text-sm text-stone-300">Observacao do movimento</span>
+        <span className="text-sm text-stone-300">Observação do movimento</span>
         <textarea
           name="notes"
           rows={3}
@@ -51,7 +57,7 @@ export function LeadStatusForm({
       </label>
 
       <label className="grid gap-2">
-        <span className="text-sm text-stone-300">Proximo contato</span>
+        <span className="text-sm text-stone-300">Próximo contato</span>
         <input
           type="datetime-local"
           name="nextContactAt"
@@ -60,12 +66,6 @@ export function LeadStatusForm({
           className="h-12 rounded-2xl border border-stone-700 bg-stone-950/80 px-4 outline-none focus:border-amber-400"
         />
       </label>
-
-      {state.error ? (
-        <p className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {state.error}
-        </p>
-      ) : null}
 
       <button
         type="submit"

@@ -103,7 +103,7 @@ export function LeadForm({
           onChange={(value) => setStateValue(formatState(value))}
         />
         <Field
-          label="Valor de conversao"
+          label="Valor de conversão"
           name="conversionValue"
           placeholder="1490,00"
           inputMode="numeric"
@@ -128,7 +128,7 @@ export function LeadForm({
           </select>
         </label>
         <Field
-          label="Endereco"
+          label="Endereço"
           name="addressLine"
           placeholder="Rua, bairro, cidade"
         />
@@ -144,7 +144,7 @@ export function LeadForm({
       </div>
 
       <label className="grid gap-2">
-        <span className="text-sm text-stone-300">Observacoes</span>
+        <span className="text-sm text-stone-300">Observações</span>
         <textarea
           name="notes"
           rows={4}

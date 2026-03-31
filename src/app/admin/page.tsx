@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/empty-state";
 import { MetricCard } from "@/components/metric-card";
 import { StatusPill } from "@/components/status-pill";
 import { getScopedDashboardMetrics } from "@/lib/analytics";
+import { getCustomerLifecycleOverview } from "@/lib/customer-intelligence";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import {
   approveProfileChangeRequest,
@@ -13,7 +14,10 @@ import {
 
 export default async function AdminPage() {
   const user = await requireAdmin();
-  const dashboard = await getScopedDashboardMetrics();
+  const [dashboard, lifecycleOverview] = await Promise.all([
+    getScopedDashboardMetrics(),
+    getCustomerLifecycleOverview(),
+  ]);
 
   const [
     clientCount,
@@ -145,6 +149,17 @@ export default async function AdminPage() {
           )}
         </div>
         </section>
+      </section>
+
+      <section className="mt-6 grid gap-4 md:grid-cols-5">
+        <MetricCard label="Campeoes" value={lifecycleOverview.breakdown.CAMPEAO} />
+        <MetricCard label="Fieis" value={lifecycleOverview.breakdown.FIEL} />
+        <MetricCard label="Em risco" value={lifecycleOverview.breakdown.EM_RISCO} />
+        <MetricCard label="Inativos" value={lifecycleOverview.breakdown.INATIVO} />
+        <MetricCard
+          label="Novos compradores"
+          value={lifecycleOverview.breakdown.NOVO_COMPRADOR}
+        />
       </section>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">

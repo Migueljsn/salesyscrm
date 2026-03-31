@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { resolveInboxItems } from "@/lib/inbox";
 import { getCustomerSalesSummaryForLead } from "@/lib/leads";
+import { getRequestClientContext } from "@/lib/request-context";
 import { getRequestOrigin } from "@/lib/url";
 import { processSalePurchaseTracking } from "@/lib/purchase-tracking";
 import {
@@ -96,7 +97,10 @@ export async function createSaleAction(
     };
   }
 
-  const origin = await getRequestOrigin();
+  const [origin, requestClientContext] = await Promise.all([
+    getRequestOrigin(),
+    getRequestClientContext(),
+  ]);
 
   const sale = await prisma.sale.create({
     data: {
@@ -144,6 +148,8 @@ export async function createSaleAction(
   await processSalePurchaseTracking({
     saleId: sale.id,
     eventSourceUrl: `${origin}/app/leads/${lead.id}`,
+    clientIpAddress: requestClientContext.clientIpAddress,
+    clientUserAgent: requestClientContext.clientUserAgent,
   }).catch(() => undefined);
 
   revalidatePath("/app");
@@ -187,13 +193,18 @@ export async function retrySaleTrackingAction(
     return { error: "Venda nao encontrada." };
   }
 
-  const origin = await getRequestOrigin();
+  const [origin, requestClientContext] = await Promise.all([
+    getRequestOrigin(),
+    getRequestClientContext(),
+  ]);
   const saleContextUrl = `${origin}/app/leads/${sale.leadId}`;
 
   try {
     const { trackingResult } = await processSalePurchaseTracking({
       saleId: sale.id,
       eventSourceUrl: saleContextUrl,
+      clientIpAddress: requestClientContext.clientIpAddress,
+      clientUserAgent: requestClientContext.clientUserAgent,
     });
 
     revalidatePath("/app");

@@ -5,7 +5,9 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { MetricCard } from "@/components/metric-card";
 import { getReportData } from "@/lib/analytics";
+import { getCustomerLifecycleOverview } from "@/lib/customer-intelligence";
 import { formatCurrency } from "@/lib/format";
+import { StatusPill } from "@/components/status-pill";
 
 export default async function AdminReportsPage({
   searchParams,
@@ -17,7 +19,7 @@ export default async function AdminReportsPage({
   const period = typeof params.period === "string" ? params.period : "30d";
   const status = typeof params.status === "string" ? params.status : undefined;
 
-  const [report, clients] = await Promise.all([
+  const [report, clients, lifecycleOverview] = await Promise.all([
     getReportData({ period, status }),
     prisma.client.findMany({
       orderBy: { name: "asc" },
@@ -27,6 +29,7 @@ export default async function AdminReportsPage({
         slug: true,
       },
     }),
+    getCustomerLifecycleOverview(),
   ]);
 
   const clientCards = await Promise.all(
@@ -36,6 +39,7 @@ export default async function AdminReportsPage({
         period,
         status,
       });
+      const clientLifecycle = await getCustomerLifecycleOverview(client.id);
 
       return {
         ...client,
@@ -43,6 +47,10 @@ export default async function AdminReportsPage({
         confirmedSales: clientReport.confirmedSales.length,
         confirmedRevenue: clientReport.confirmedRevenue,
         conversionRate: clientReport.conversionRate,
+        champions: clientLifecycle.breakdown.CAMPEAO,
+        loyal: clientLifecycle.breakdown.FIEL,
+        atRisk: clientLifecycle.breakdown.EM_RISCO,
+        inactive: clientLifecycle.breakdown.INATIVO,
       };
     }),
   );
@@ -97,6 +105,17 @@ export default async function AdminReportsPage({
         <MetricCard label="Faturamento" value={formatCurrency(report.confirmedRevenue)} />
       </section>
 
+      <section className="mt-6 grid gap-4 md:grid-cols-4 xl:grid-cols-5">
+        <MetricCard label="Campeoes" value={lifecycleOverview.breakdown.CAMPEAO} />
+        <MetricCard label="Fieis" value={lifecycleOverview.breakdown.FIEL} />
+        <MetricCard label="Em risco" value={lifecycleOverview.breakdown.EM_RISCO} />
+        <MetricCard label="Inativos" value={lifecycleOverview.breakdown.INATIVO} />
+        <MetricCard
+          label="Novos compradores"
+          value={lifecycleOverview.breakdown.NOVO_COMPRADOR}
+        />
+      </section>
+
       <section className="mt-6 rounded-[2rem] border border-stone-800 bg-stone-900/60 p-6">
         <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
           Clientes
@@ -120,6 +139,12 @@ export default async function AdminReportsPage({
                   <p>{client.confirmedSales} venda(s) confirmada(s)</p>
                   <p>{formatCurrency(client.confirmedRevenue)}</p>
                   <p>{client.conversionRate.toFixed(1)}% de conversao</p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {client.champions ? <StatusPill status="CAMPEAO" compact /> : null}
+                  {client.loyal ? <StatusPill status="FIEL" compact /> : null}
+                  {client.atRisk ? <StatusPill status="EM_RISCO" compact /> : null}
+                  {client.inactive ? <StatusPill status="INATIVO" compact /> : null}
                 </div>
                 <Link
                   href={`/admin/reports/${client.id}?period=${period}${status ? `&status=${encodeURIComponent(status)}` : ""}`}

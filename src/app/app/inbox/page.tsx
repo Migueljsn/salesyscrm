@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { StatusPill } from "@/components/status-pill";
 import { requireUser } from "@/lib/auth";
+import { syncCustomerLifecycleInboxItems } from "@/lib/customer-intelligence";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
 import { InboxContextLink } from "./inbox-context-link";
@@ -13,6 +14,9 @@ import {
 
 export default async function InboxPage() {
   const user = await requireUser();
+  await syncCustomerLifecycleInboxItems(
+    user.role === "CLIENT" ? user.clientId : undefined,
+  );
   const now = new Date();
   const openItems = await prisma.inboxItem.findMany({
     where: {

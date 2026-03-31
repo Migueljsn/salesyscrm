@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { getDocumentDigits } from "@/lib/document";
 
+type SaleMetricsInput = {
+  totalValue: Prisma.Decimal | number | string;
+  status?: string | null;
+  confirmedAt?: Date | string | null;
+  createdAt?: Date | string | null;
+};
+
 export function getPhoneDigits(value?: string | null) {
   return (value ?? "").replace(/\D/g, "");
 }
@@ -105,6 +112,7 @@ export async function listScopedLeads(search?: string, status?: string) {
           totalValue: true,
           status: true,
           confirmedAt: true,
+          createdAt: true,
         },
         orderBy: {
           createdAt: "desc",
@@ -155,6 +163,44 @@ export type CustomerSalesSummary = {
   lastConfirmedSaleAt: Date | null;
 };
 
+export function getConfirmedSalesMetrics(sales: SaleMetricsInput[]) {
+  const confirmedSales = sales.filter((sale) => sale.status === "CONFIRMED");
+
+  if (confirmedSales.length === 0) {
+    return {
+      confirmedSalesCount: 0,
+      totalConfirmedValue: null,
+      lastConfirmedSaleAt: null,
+    };
+  }
+
+  const totalConfirmedValue = confirmedSales
+    .reduce((sum, sale) => sum + Number(sale.totalValue.toString()), 0)
+    .toFixed(2);
+
+  const lastConfirmedSaleAt = confirmedSales.reduce<Date | null>((latest, sale) => {
+    const candidateValue = sale.confirmedAt ?? sale.createdAt;
+
+    if (!candidateValue) {
+      return latest;
+    }
+
+    const candidate = new Date(candidateValue);
+
+    if (!latest || candidate > latest) {
+      return candidate;
+    }
+
+    return latest;
+  }, null);
+
+  return {
+    confirmedSalesCount: confirmedSales.length,
+    totalConfirmedValue,
+    lastConfirmedSaleAt,
+  };
+}
+
 export async function getCustomerSalesSummaryForLead(input: {
   clientId: string;
   phone?: string | null;
@@ -167,28 +213,22 @@ export async function getCustomerSalesSummaryForLead(input: {
     return null;
   }
 
-  const leads = await prisma.lead.findMany({
+  const matchingLeads = await prisma.lead.findMany({
     where: {
       clientId: input.clientId,
+      OR: [
+        ...(documentDigits ? [{ document: documentDigits }] : []),
+        ...(phoneDigits ? [{ phone: { contains: phoneDigits } }] : []),
+      ],
     },
     select: {
       id: true,
       phone: true,
       document: true,
-      sales: {
-        where: {
-          status: "CONFIRMED",
-        },
-        select: {
-          totalValue: true,
-          confirmedAt: true,
-          createdAt: true,
-        },
-      },
     },
   });
 
-  const matchingSales = leads
+  const matchingLeadIds = matchingLeads
     .filter((lead) => {
       const samePhone =
         phoneDigits && getPhoneDigits(lead.phone) === phoneDigits;
@@ -198,29 +238,37 @@ export async function getCustomerSalesSummaryForLead(input: {
 
       return Boolean(samePhone || sameDocument);
     })
-    .flatMap((lead) => lead.sales);
+    .map((lead) => lead.id);
 
-  if (matchingSales.length === 0) {
+  if (matchingLeadIds.length === 0) {
     return null;
   }
 
-  const totalConfirmedValue = matchingSales
-    .reduce((sum, sale) => sum + Number(sale.totalValue.toString()), 0)
-    .toFixed(2);
+  const matchingSales = await prisma.sale.findMany({
+    where: {
+      clientId: input.clientId,
+      status: "CONFIRMED",
+      leadId: {
+        in: matchingLeadIds,
+      },
+    },
+    select: {
+      totalValue: true,
+      status: true,
+      confirmedAt: true,
+      createdAt: true,
+    },
+  });
 
-  const lastConfirmedSaleAt = matchingSales.reduce<Date | null>((latest, sale) => {
-    const candidate = sale.confirmedAt ?? sale.createdAt;
+  const metrics = getConfirmedSalesMetrics(matchingSales);
 
-    if (!latest || candidate > latest) {
-      return candidate;
-    }
-
-    return latest;
-  }, null);
+  if (metrics.confirmedSalesCount === 0 || !metrics.totalConfirmedValue) {
+    return null;
+  }
 
   return {
-    confirmedSalesCount: matchingSales.length,
-    totalConfirmedValue,
-    lastConfirmedSaleAt,
+    confirmedSalesCount: metrics.confirmedSalesCount,
+    totalConfirmedValue: metrics.totalConfirmedValue,
+    lastConfirmedSaleAt: metrics.lastConfirmedSaleAt,
   } satisfies CustomerSalesSummary;
 }

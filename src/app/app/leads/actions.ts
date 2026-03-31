@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { detectDocumentType, getDocumentDigits } from "@/lib/document";
 import { findDuplicateLeadByContact } from "@/lib/leads";
 import { createOrUpdateOpenInboxItem, resolveInboxItems } from "@/lib/inbox";
+import { getRequestClientContext } from "@/lib/request-context";
 import { getRequestOrigin } from "@/lib/url";
 import { sendMetaQualifiedLeadEvent } from "@/lib/meta";
 
@@ -51,6 +52,7 @@ const qualifyLeadSchema = z.object({
 
 export type LeadActionState = {
   error?: string;
+  success?: string;
 };
 
 function parseNextContactAt(value?: string) {
@@ -253,7 +255,7 @@ export async function updateLeadStatusAction(
   revalidatePath(`/app/leads/${lead.id}`);
   revalidatePath("/app/inbox");
 
-  return {};
+  return { success: "Status atualizado com sucesso." };
 }
 
 export async function updateLeadNotesAction(
@@ -289,7 +291,7 @@ export async function updateLeadNotesAction(
   revalidatePath(`/app/leads/${lead.id}`);
   revalidatePath("/app/leads");
 
-  return {};
+  return { success: "Observações salvas com sucesso." };
 }
 
 export async function qualifyLeadAction(
@@ -340,7 +342,10 @@ export async function qualifyLeadAction(
     },
   });
 
-  const origin = await getRequestOrigin();
+  const [origin, requestClientContext] = await Promise.all([
+    getRequestOrigin(),
+    getRequestClientContext(),
+  ]);
   const clientSettings = await prisma.clientSettings.findUnique({
     where: { clientId: lead.clientId },
   });
@@ -362,6 +367,8 @@ export async function qualifyLeadAction(
         settings: clientSettings,
         eventSourceUrl: `${origin}/app/leads/${lead.id}`,
         eventId: qualifiedMetaEventId,
+        clientIpAddress: requestClientContext.clientIpAddress,
+        clientUserAgent: requestClientContext.clientUserAgent,
       });
 
       await prisma.lead.update({
@@ -406,7 +413,7 @@ export async function qualifyLeadAction(
   revalidatePath("/app/leads");
   revalidatePath(`/app/leads/${lead.id}`);
 
-  return {};
+  return { success: "Lead qualificada com sucesso." };
 }
 
 export async function deleteLeadAction(

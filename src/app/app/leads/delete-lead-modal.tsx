@@ -1,6 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { motion } from "motion/react";
+import { X, Trash2 } from "lucide-react";
 import { deleteLeadAction, type LeadActionState } from "./actions";
 
 const initialState: LeadActionState = {};
@@ -24,60 +27,54 @@ export function DeleteLeadModal({
   );
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
+    if (state.error) {
+      // keep modal open on error so user sees the message
     }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
+  }, [state]);
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          setConfirmationText("");
-          setIsOpen(true);
-        }}
-        className={
-          buttonClassName ??
-          "rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 transition hover:border-red-400/40 hover:bg-red-500/20"
-        }
-      >
-        {buttonLabel}
-      </button>
+    <Dialog.Root open={isOpen} onOpenChange={(open) => {
+      if (!open) setConfirmationText("");
+      setIsOpen(open);
+    }}>
+      <Dialog.Trigger asChild>
+        <button
+          type="button"
+          className={
+            buttonClassName ??
+            "rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 transition hover:border-red-400/40 hover:bg-red-500/20"
+          }
+        >
+          {buttonLabel}
+        </button>
+      </Dialog.Trigger>
 
-      {isOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm">
-          <div className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[2rem] border border-stone-800 bg-stone-900 shadow-2xl shadow-black/40">
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-sm" />
+        <Dialog.Content asChild>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[2rem] border border-stone-800 bg-stone-900 shadow-2xl shadow-black/40"
+          >
             <div className="flex items-start justify-between gap-4 border-b border-stone-800 px-5 py-5 md:px-6">
               <div>
                 <p className="text-sm uppercase tracking-[0.22em] text-red-200">
-                  Exclusao
+                  Exclusão
                 </p>
-                <h2 className="mt-2 text-2xl font-semibold">Confirmar exclusao</h2>
-                <p className="mt-2 text-sm leading-6 text-stone-300">
-                  Esta acao remove a lead <strong>{leadName}</strong> e seus dados
+                <Dialog.Title className="mt-2 text-2xl font-semibold">
+                  Confirmar exclusão
+                </Dialog.Title>
+                <Dialog.Description className="mt-2 text-sm leading-6 text-stone-300">
+                  Esta ação remove a lead <strong>{leadName}</strong> e seus dados
                   relacionados. Para continuar, digite <strong>EXCLUIR</strong>.
-                </p>
+                </Dialog.Description>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmationText("");
-                  setIsOpen(false);
-                }}
-                className="rounded-full border border-stone-700 px-3 py-2 text-sm text-stone-200 transition hover:border-stone-500 hover:bg-stone-800"
-                aria-label="Fechar confirmacao de exclusao"
-              >
-                Fechar
-              </button>
+              <Dialog.Close className="rounded-xl border border-stone-700 p-2 text-stone-400 transition hover:border-stone-500 hover:text-stone-200">
+                <X size={14} />
+              </Dialog.Close>
             </div>
 
             <form action={formAction} className="grid gap-4 px-5 py-5 md:px-6">
@@ -85,7 +82,7 @@ export function DeleteLeadModal({
 
               <label className="grid gap-2">
                 <span className="text-sm text-stone-300">
-                  Digite a frase de confirmacao
+                  Digite a frase de confirmação
                 </span>
                 <input
                   name="confirmationText"
@@ -103,28 +100,27 @@ export function DeleteLeadModal({
               ) : null}
 
               <div className="flex flex-wrap justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setConfirmationText("");
-                    setIsOpen(false);
-                  }}
-                  className="rounded-2xl border border-stone-700 px-4 py-3 text-sm font-semibold text-stone-100 transition hover:border-stone-500 hover:bg-stone-800"
-                >
-                  Cancelar
-                </button>
+                <Dialog.Close asChild>
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-stone-700 px-4 py-3 text-sm font-semibold text-stone-100 transition hover:border-stone-500 hover:bg-stone-800"
+                  >
+                    Cancelar
+                  </button>
+                </Dialog.Close>
                 <button
                   type="submit"
                   disabled={confirmationText !== "EXCLUIR" || isPending}
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 transition hover:border-red-400/40 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 transition hover:border-red-400/40 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isPending ? "Excluindo..." : "Confirmar exclusao"}
+                  <Trash2 size={14} />
+                  {isPending ? "Excluindo..." : "Confirmar exclusão"}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      ) : null}
-    </>
+          </motion.div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

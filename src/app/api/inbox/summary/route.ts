@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { InboxItemStatus } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
+import { syncCustomerLifecycleInboxItems } from "@/lib/customer-intelligence";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -9,6 +10,10 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: "Nao autenticado." }, { status: 401 });
   }
+
+  await syncCustomerLifecycleInboxItems(
+    user.role === "CLIENT" ? user.clientId : undefined,
+  );
 
   const now = new Date();
   const where = {

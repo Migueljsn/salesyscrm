@@ -1,9 +1,14 @@
 import { notFound } from "next/navigation";
+import { MessageCircle } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { StatusPill } from "@/components/status-pill";
+import { CollapsibleSection } from "@/components/collapsible-section";
+import { TrackingAccordion } from "@/components/tracking-accordion";
+import { getCustomerLifecycleSummaryForLead } from "@/lib/customer-intelligence";
 import {
   buildWhatsAppUrl,
+  getConfirmedSalesMetrics,
   getCustomerSalesSummaryForLead,
   getLeadScope,
   getScopedLeadById,
@@ -40,19 +45,33 @@ export default async function LeadDetailPage({
     notFound();
   }
 
-  const customerSalesSummary = await getCustomerSalesSummaryForLead({
-    clientId: lead.clientId,
-    phone: lead.phone,
-    document: lead.document,
-  });
+  const [customerSalesSummary, customerLifecycleSummary] = await Promise.all([
+    getCustomerSalesSummaryForLead({
+      clientId: lead.clientId,
+      phone: lead.phone,
+      document: lead.document,
+    }),
+    getCustomerLifecycleSummaryForLead({
+      clientId: lead.clientId,
+      phone: lead.phone,
+      document: lead.document,
+    }),
+  ]);
 
   const leadWhatsappUrl = buildWhatsAppUrl(lead.phone);
+  const confirmedSalesMetrics = getConfirmedSalesMetrics(lead.sales);
+  const totalSalesValue =
+    confirmedSalesMetrics.totalConfirmedValue ?? lead.conversionValue?.toString();
+
+  const hasUtmData =
+    lead.utmSource || lead.utmMedium || lead.utmCampaign ||
+    lead.utmContent || lead.utmTerm || lead.fbclid;
 
   return (
     <AppShell
       eyebrow="Lead"
       title={lead.name}
-      description="Detalhe operacional da lead, com historico comercial e base pronta para evoluir para venda."
+      description="Detalhe operacional da lead, com histórico comercial e base pronta para evoluir para venda."
       role={user.role}
       userName={user.fullName}
       userEmail={user.email}
@@ -68,14 +87,23 @@ export default async function LeadDetailPage({
               <StatusInfoCard label="Status atual" value={lead.status} />
               <InfoCard
                 label="Lead qualificada"
-                value={lead.isQualified ? "Sim" : "Nao"}
+                value={lead.isQualified ? "Sim" : "Não"}
               />
               <InfoCard
                 label="Valor"
-                value={formatCurrency(
-                  lead.sales[0]?.totalValue?.toString() ??
-                    lead.conversionValue?.toString(),
-                )}
+                value={formatCurrency(totalSalesValue)}
+              />
+              <InfoCard
+                label="Qtd compras"
+                value={String(confirmedSalesMetrics.confirmedSalesCount)}
+              />
+              <InfoCard
+                label="Ultima compra"
+                value={
+                  confirmedSalesMetrics.lastConfirmedSaleAt
+                    ? formatDateTime(confirmedSalesMetrics.lastConfirmedSaleAt)
+                    : "-"
+                }
               />
               <InfoCard label="Criada em" value={formatDateTime(lead.createdAt)} />
             </div>
@@ -83,11 +111,11 @@ export default async function LeadDetailPage({
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <InfoCard label="Cliente" value={lead.client.name} />
               <InfoCard
-                label="Responsavel"
-                value={lead.assignedTo?.fullName || "Nao atribuido"}
+                label="Responsável"
+                value={lead.assignedTo?.fullName || "Não atribuído"}
               />
               <InfoCard
-                label="Proximo contato"
+                label="Próximo contato"
                 value={lead.nextContactAt ? formatDateTime(lead.nextContactAt) : "-"}
               />
               <InfoCard
@@ -98,6 +126,26 @@ export default async function LeadDetailPage({
                 label="Qualificada por"
                 value={lead.qualifiedBy?.fullName || "-"}
               />
+              <StatusInfoCard
+                label="Segmento do cliente"
+                value={customerLifecycleSummary?.segment || "NOVO_COMPRADOR"}
+              />
+              <InfoCard
+                label="Dias sem comprar"
+                value={
+                  customerLifecycleSummary
+                    ? String(customerLifecycleSummary.daysSinceLastPurchase)
+                    : "-"
+                }
+              />
+              <InfoCard
+                label="Compras nos ultimos 30 dias"
+                value={
+                  customerLifecycleSummary
+                    ? String(customerLifecycleSummary.purchasesLast30Days)
+                    : "0"
+                }
+              />
             </div>
 
             {leadWhatsappUrl ? (
@@ -106,65 +154,72 @@ export default async function LeadDetailPage({
                   href={leadWhatsappUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400/40 hover:bg-emerald-500/20"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400/40 hover:bg-emerald-500/20"
                 >
+                  <MessageCircle size={15} />
                   Abrir conversa no WhatsApp
                 </a>
               </div>
             ) : null}
 
-            <div className="mt-6 grid gap-3">
-              <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
-                Origem
-              </p>
-              <div className="grid gap-4 md:grid-cols-3">
-                <InfoCard label="UTM Source" value={lead.utmSource || "-"} />
-                <InfoCard label="UTM Medium" value={lead.utmMedium || "-"} />
-                <InfoCard label="UTM Campaign" value={lead.utmCampaign || "-"} />
-                <InfoCard label="UTM Content" value={lead.utmContent || "-"} />
-                <InfoCard label="UTM Term" value={lead.utmTerm || "-"} />
-                <InfoCard label="FBCLID" value={lead.fbclid || "-"} />
-              </div>
+            <div className="mt-6">
+              <CollapsibleSection
+                label="Origem"
+                defaultOpen={!!hasUtmData}
+              >
+                <div className="grid gap-4 md:grid-cols-3">
+                  <InfoCard label="UTM Source" value={lead.utmSource || "-"} />
+                  <InfoCard label="UTM Medium" value={lead.utmMedium || "-"} />
+                  <InfoCard label="UTM Campaign" value={lead.utmCampaign || "-"} />
+                  <InfoCard label="UTM Content" value={lead.utmContent || "-"} />
+                  <InfoCard label="UTM Term" value={lead.utmTerm || "-"} />
+                  <InfoCard label="FBCLID" value={lead.fbclid || "-"} />
+                </div>
+              </CollapsibleSection>
             </div>
           </article>
 
           <article className="rounded-[2rem] border border-stone-800 bg-stone-900/55 p-6">
             <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
-              Historico
+              Histórico
             </p>
             <h2 className="mt-2 text-2xl font-semibold">Linha do tempo</h2>
 
-            <div className="mt-6 grid gap-4">
-              {lead.history.length === 0 ? (
-                <EmptyState
-                  title="Sem historico"
-                  description="Os movimentos de status desta lead aparecerao aqui conforme a operacao avancar."
-                />
-              ) : (
-                lead.history.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-300">
-                        {entry.previousStatus || "INICIO"}
-                      </span>
-                      <span className="text-stone-500">→</span>
-                      <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-100">
-                        {entry.nextStatus}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm text-stone-300">
-                      {entry.notes || "Sem observacao neste movimento."}
-                    </p>
-                    <p className="mt-3 text-xs text-stone-500">
-                      {formatDateTime(entry.createdAt)} ·{" "}
-                      {entry.changedBy?.fullName || "Sistema"}
-                    </p>
-                  </div>
-                ))
-              )}
+            <div className="mt-6">
+              <CollapsibleSection label="Expandir histórico" defaultOpen={lead.history.length <= 3}>
+                <div className="grid gap-4">
+                  {lead.history.length === 0 ? (
+                    <EmptyState
+                      title="Sem histórico"
+                      description="Os movimentos de status desta lead aparecerão aqui conforme a operação avançar."
+                    />
+                  ) : (
+                    lead.history.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-300">
+                            {entry.previousStatus || "INÍCIO"}
+                          </span>
+                          <span className="text-stone-500">→</span>
+                          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-100">
+                            {entry.nextStatus}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm text-stone-300">
+                          {entry.notes || "Sem observação neste movimento."}
+                        </p>
+                        <p className="mt-3 text-xs text-stone-500">
+                          {formatDateTime(entry.createdAt)} ·{" "}
+                          {entry.changedBy?.fullName || "Sistema"}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CollapsibleSection>
             </div>
           </article>
 
@@ -181,102 +236,103 @@ export default async function LeadDetailPage({
                 />
               </div>
             ) : (
-              <div className="mt-5 grid gap-4">
-                {lead.sales.map((sale) => {
-                  return (
-                  <div
-                    key={sale.id}
-                    className="rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-stone-100">
-                          {formatCurrency(sale.totalValue.toString())}
-                        </p>
-                        <div className="mt-2">
-                          <StatusPill status={sale.status} />
-                        </div>
-                      </div>
-                      <p className="text-xs text-stone-500">
-                        {formatDateTime(sale.createdAt)}
-                      </p>
-                    </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <InfoCard label="Comprador" value={sale.buyerName} />
-                      <InfoCard label="Telefone" value={sale.buyerPhone} />
-                      <InfoCard label="Endereco" value={sale.buyerAddress || "-"} />
-                      <InfoCard
-                        label="Confirmada em"
-                        value={sale.confirmedAt ? formatDateTime(sale.confirmedAt) : "-"}
-                      />
-                    </div>
-                    <div className="mt-4 rounded-[1.25rem] border border-stone-800 bg-stone-900/50 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
-                            Tracking
+              <div className="mt-5">
+                <CollapsibleSection label="Expandir vendas registradas" defaultOpen={lead.sales.length <= 1}>
+                  <div className="grid gap-4">
+                    {lead.sales.map((sale) => (
+                      <div
+                        key={sale.id}
+                        className="rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-stone-100">
+                              {formatCurrency(sale.totalValue.toString())}
+                            </p>
+                            <div className="mt-2">
+                              <StatusPill status={sale.status} />
+                            </div>
+                          </div>
+                          <p className="text-xs text-stone-500">
+                            {formatDateTime(sale.createdAt)}
                           </p>
-                          <div className="mt-3">
-                            <StatusPill
-                              status={sale.trackingStatus || "PENDENTE"}
-                              compact
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <InfoCard label="Comprador" value={sale.buyerName} />
+                          <InfoCard label="Telefone" value={sale.buyerPhone} />
+                          <InfoCard label="Endereço" value={sale.buyerAddress || "-"} />
+                          <InfoCard
+                            label="Confirmada em"
+                            value={sale.confirmedAt ? formatDateTime(sale.confirmedAt) : "-"}
+                          />
+                        </div>
+                        <div className="mt-4 rounded-[1.25rem] border border-stone-800 bg-stone-900/50 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                                Rastreamento
+                              </p>
+                              <div className="mt-3">
+                                <StatusPill
+                                  status={sale.trackingStatus || "PENDENTE"}
+                                  compact
+                                />
+                              </div>
+                            </div>
+                            <div className="text-sm text-stone-400">
+                              <p>
+                                Último envio:{" "}
+                                <span className="text-stone-200">
+                                  {sale.trackingSentAt
+                                    ? formatDateTime(sale.trackingSentAt)
+                                    : "-"}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+
+                          {sale.trackingError ? (
+                            <div className="mt-4 rounded-[1rem] border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                              <p className="font-semibold text-red-100">
+                                Falha no envio do Purchase
+                              </p>
+                              <p className="mt-2 leading-6">{sale.trackingError}</p>
+                            </div>
+                          ) : null}
+
+                          {sale.trackingResponse ? (
+                            <div className="mt-4">
+                              <TrackingAccordion label="Ver resposta do rastreamento">
+                                <pre className="overflow-x-auto text-xs leading-6 text-stone-400">
+                                  {JSON.stringify(sale.trackingResponse, null, 2)}
+                                </pre>
+                              </TrackingAccordion>
+                            </div>
+                          ) : null}
+
+                          <div className="mt-4">
+                            <RetrySaleTrackingForm
+                              saleId={sale.id}
+                              disabled={sale.status !== "CONFIRMED"}
                             />
                           </div>
                         </div>
-                        <div className="text-sm text-stone-400">
-                          <p>
-                            Ultimo envio:{" "}
-                            <span className="text-stone-200">
-                              {sale.trackingSentAt
-                                ? formatDateTime(sale.trackingSentAt)
-                                : "-"}
-                            </span>
-                          </p>
-                        </div>
+                        {sale.items.length > 0 ? (
+                          <div className="mt-4 rounded-[1.25rem] border border-stone-800 bg-stone-900/50 p-4">
+                            <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                              Itens
+                            </p>
+                            <ul className="mt-3 grid gap-2 text-sm text-stone-200">
+                              {sale.items.map((item) => (
+                                <li key={item.id}>• {item.description}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </div>
-
-                      {sale.trackingError ? (
-                        <div className="mt-4 rounded-[1rem] border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                          <p className="font-semibold text-red-100">
-                            Falha no envio do Purchase
-                          </p>
-                          <p className="mt-2 leading-6">{sale.trackingError}</p>
-                        </div>
-                      ) : null}
-
-                      {sale.trackingResponse ? (
-                        <details className="mt-4 rounded-[1rem] border border-stone-800 bg-stone-950/60 p-4">
-                          <summary className="cursor-pointer text-sm font-semibold text-stone-200">
-                            Ver resposta do tracking
-                          </summary>
-                          <pre className="mt-3 overflow-x-auto text-xs leading-6 text-stone-400">
-                            {JSON.stringify(sale.trackingResponse, null, 2)}
-                          </pre>
-                        </details>
-                      ) : null}
-
-                      <div className="mt-4">
-                        <RetrySaleTrackingForm
-                          saleId={sale.id}
-                          disabled={sale.status !== "CONFIRMED"}
-                        />
-                      </div>
-                    </div>
-                    {sale.items.length > 0 ? (
-                      <div className="mt-4 rounded-[1.25rem] border border-stone-800 bg-stone-900/50 p-4">
-                        <p className="text-xs uppercase tracking-[0.2em] text-stone-500">
-                          Itens
-                        </p>
-                        <ul className="mt-3 grid gap-2 text-sm text-stone-200">
-                          {sale.items.map((item) => (
-                            <li key={item.id}>• {item.description}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
+                    ))}
                   </div>
-                  );
-                })}
+                </CollapsibleSection>
               </div>
             )}
           </article>
@@ -285,7 +341,7 @@ export default async function LeadDetailPage({
         <aside className="grid gap-6">
           <section className="rounded-[2rem] border border-stone-800 bg-stone-900/55 p-5">
             <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
-              Qualificacao
+              Qualificação
             </p>
             <h2 className="mt-2 text-2xl font-semibold">Lead Qualificada</h2>
             <div className="mt-5 grid gap-3">
@@ -304,9 +360,9 @@ export default async function LeadDetailPage({
                     Qualificada em:{" "}
                     {lead.qualifiedAt ? formatDateTime(lead.qualifiedAt) : "-"}
                   </p>
-                  <p>Responsavel: {lead.qualifiedBy?.fullName || "-"}</p>
+                  <p>Responsável: {lead.qualifiedBy?.fullName || "-"}</p>
                   <p>
-                    Tracking: {lead.qualifiedTrackingStatus || "PENDENTE"}
+                    Rastreamento: <StatusPill status={lead.qualifiedTrackingStatus || "PENDENTE"} compact />
                   </p>
                   <p>
                     Enviado em:{" "}
@@ -327,14 +383,11 @@ export default async function LeadDetailPage({
               ) : null}
 
               {lead.qualifiedTrackingResponse ? (
-                <details className="rounded-[1.25rem] border border-stone-800 bg-stone-950/60 p-4">
-                  <summary className="cursor-pointer text-sm font-semibold text-stone-200">
-                    Ver resposta do tracking
-                  </summary>
-                  <pre className="mt-3 overflow-x-auto text-xs leading-6 text-stone-400">
+                <TrackingAccordion label="Ver resposta do rastreamento">
+                  <pre className="overflow-x-auto text-xs leading-6 text-stone-400">
                     {JSON.stringify(lead.qualifiedTrackingResponse, null, 2)}
                   </pre>
-                </details>
+                </TrackingAccordion>
               ) : null}
 
               {!lead.isQualified ? <QualifyLeadForm leadId={lead.id} /> : null}
@@ -358,9 +411,9 @@ export default async function LeadDetailPage({
               </div>
             ) : (
               <div className="mt-5 rounded-[1.5rem] border border-stone-800 bg-stone-950/60 p-4 text-sm leading-6 text-stone-300">
-                A venda so pode ser registrada depois que esta lead for marcada
+                A venda só pode ser registrada depois que esta lead for marcada
                 como <strong className="text-stone-100">Lead Qualificada</strong>.
-                Use o card de qualificacao acima para liberar esta etapa.
+                Use o card de qualificação acima para liberar esta etapa.
               </div>
             )}
           </section>
@@ -381,7 +434,7 @@ export default async function LeadDetailPage({
 
           <section className="rounded-[2rem] border border-stone-800 bg-stone-900/55 p-5">
             <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
-              Observacoes
+              Observações
             </p>
             <h2 className="mt-2 text-2xl font-semibold">Contexto comercial</h2>
             <div className="mt-5">
@@ -395,8 +448,8 @@ export default async function LeadDetailPage({
             </p>
             <h2 className="mt-2 text-2xl font-semibold">Excluir lead</h2>
             <p className="mt-3 text-sm leading-6 text-stone-300">
-              Use esta opcao apenas quando a lead tiver sido criada incorretamente ou
-              nao deva mais existir no CRM.
+              Use esta opção apenas quando a lead tiver sido criada incorretamente ou
+              não deva mais existir no CRM.
             </p>
             <div className="mt-5">
               <DeleteLeadModal leadId={lead.id} leadName={lead.name} />

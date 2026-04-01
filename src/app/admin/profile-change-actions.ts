@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { decryptRequestedPassword } from "@/lib/password-request";
 import { prisma } from "@/lib/prisma";
 import { resolveInboxItems } from "@/lib/inbox";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -58,14 +59,28 @@ export async function approveProfileChangeRequest(formData: FormData) {
   }
 
   if (request.requester.authUserId) {
+    const updatePayload: {
+      email: string;
+      user_metadata: {
+        full_name: string;
+      };
+      password?: string;
+    } = {
+      email: request.requestedEmail,
+      user_metadata: {
+        full_name: request.requestedFullName,
+      },
+    };
+
+    if (request.requestsPasswordChange && request.requestedPasswordEncrypted) {
+      updatePayload.password = decryptRequestedPassword(
+        request.requestedPasswordEncrypted,
+      );
+    }
+
     const { error } = await supabaseAdmin.auth.admin.updateUserById(
       request.requester.authUserId,
-      {
-        email: request.requestedEmail,
-        user_metadata: {
-          full_name: request.requestedFullName,
-        },
-      },
+      updatePayload,
     );
 
     if (error) {
@@ -98,6 +113,7 @@ export async function approveProfileChangeRequest(formData: FormData) {
         reviewerId: admin.id,
         reviewedAt: new Date(),
         rejectionReason: null,
+        requestedPasswordEncrypted: null,
       },
     }),
   ]);
@@ -137,6 +153,7 @@ export async function rejectProfileChangeRequest(formData: FormData) {
       rejectionReason: parsed.data.rejectionReason,
       reviewerId: admin.id,
       reviewedAt: new Date(),
+      requestedPasswordEncrypted: null,
     },
   });
 

@@ -214,6 +214,9 @@ export default async function AdminPage() {
                       </p>
                       <p className="mt-3">Nome: {request.requestedFullName}</p>
                       <p className="mt-1">Email: {request.requestedEmail}</p>
+                      <p className="mt-1">
+                        Alteracao de senha: {request.requestsPasswordChange ? "Sim" : "Nao"}
+                      </p>
                     </div>
                   </div>
 
@@ -278,6 +281,7 @@ export default async function AdminPage() {
                   <div className="mt-3 grid gap-1 text-sm text-stone-400">
                     <p>{request.requester.client?.name ?? "Sem cliente"}</p>
                     <p>{request.requestedEmail}</p>
+                    <p>Alteracao de senha: {request.requestsPasswordChange ? "Sim" : "Nao"}</p>
                     {request.reviewer ? (
                       <p>Avaliado por {request.reviewer.fullName}</p>
                     ) : null}

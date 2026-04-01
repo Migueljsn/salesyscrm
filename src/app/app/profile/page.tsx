@@ -4,6 +4,7 @@ import { StatusPill } from "@/components/status-pill";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
+import { AdminPasswordForm } from "./admin-password-form";
 import { ProfileRequestForm } from "./profile-request-form";
 
 export default async function ProfilePage() {
@@ -28,7 +29,11 @@ export default async function ProfilePage() {
     <AppShell
       eyebrow="Meu perfil"
       title="Alteracoes do usuario"
-      description="As alteracoes do nome da empresa e do email de acesso ficam pendentes ate aprovacao de um administrador."
+      description={
+        user.role === "ADMIN"
+          ? "Administradores podem atualizar a propria senha diretamente. Clientes continuam com alteracoes pendentes de aprovacao."
+          : "As alteracoes do nome da empresa, email e senha ficam pendentes ate aprovacao de um administrador."
+      }
       role={user.role}
       userName={user.fullName}
       userEmail={user.email}
@@ -50,26 +55,37 @@ export default async function ProfilePage() {
             </article>
           </div>
 
-          <div className="mt-6 rounded-[1.75rem] border border-stone-800 bg-stone-950/40 p-5">
-            <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
-              Solicitar alteracao
-            </p>
-            {pendingRequest ? (
-              <div className="mt-4 rounded-[1.5rem] border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-                Existe uma solicitacao pendente criada em{" "}
-                {formatDateTime(pendingRequest.createdAt)}. Aguarde a analise do
-                administrador antes de enviar outra.
+          {user.role === "ADMIN" ? (
+            <div className="mt-6 rounded-[1.75rem] border border-stone-800 bg-stone-950/40 p-5">
+              <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
+                Alterar senha
+              </p>
+              <div className="mt-5">
+                <AdminPasswordForm />
               </div>
-            ) : null}
-
-            <div className="mt-5">
-              <ProfileRequestForm
-                fullName={user.fullName}
-                email={user.email}
-                disabled={Boolean(pendingRequest)}
-              />
             </div>
-          </div>
+          ) : (
+            <div className="mt-6 rounded-[1.75rem] border border-stone-800 bg-stone-950/40 p-5">
+              <p className="text-sm uppercase tracking-[0.22em] text-stone-400">
+                Solicitar alteracao
+              </p>
+              {pendingRequest ? (
+                <div className="mt-4 rounded-[1.5rem] border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+                  Existe uma solicitacao pendente criada em{" "}
+                  {formatDateTime(pendingRequest.createdAt)}. Aguarde a analise do
+                  administrador antes de enviar outra.
+                </div>
+              ) : null}
+
+              <div className="mt-5">
+                <ProfileRequestForm
+                  fullName={user.fullName}
+                  email={user.email}
+                  disabled={Boolean(pendingRequest)}
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="rounded-[2rem] border border-stone-800 bg-stone-900/60 p-6">
@@ -95,8 +111,9 @@ export default async function ProfilePage() {
                     </p>
                   </div>
                   <div className="mt-4 grid gap-2 text-sm text-stone-300">
-                      <p>Empresa solicitada: {request.requestedFullName}</p>
+                    <p>Empresa solicitada: {request.requestedFullName}</p>
                     <p>Email solicitado: {request.requestedEmail}</p>
+                    <p>Alteracao de senha: {request.requestsPasswordChange ? "Sim" : "Nao"}</p>
                     {request.reviewer ? (
                       <p>Avaliado por: {request.reviewer.fullName}</p>
                     ) : null}

@@ -45,6 +45,17 @@ export function ProfileRequestForm({
         />
       </label>
 
+      <label className="grid gap-2">
+        <span className="text-sm text-stone-300">Nova senha</span>
+        <input
+          type="password"
+          name="requestedPassword"
+          disabled={disabled}
+          placeholder="Opcional, minimo 8 caracteres"
+          className="h-12 rounded-2xl border border-stone-700 bg-stone-950/80 px-4 outline-none focus:border-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+      </label>
+
       {state.error ? (
         <p className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {state.error}

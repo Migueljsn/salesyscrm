@@ -104,6 +104,8 @@ model ProfileChangeRequest {
   currentEmail     String
   requestedFullName String
   requestedEmail   String
+  requestedPasswordEncrypted String?
+  requestsPasswordChange Boolean @default(false)
   rejectionReason  String?
   createdAt        DateTime                   @default(now())
   reviewedAt       DateTime?
